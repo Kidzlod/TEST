@@ -43,6 +43,33 @@ local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 
+local function enforceStaffAccess()
+	if not LocalPlayer or not CRACKABLES(LocalPlayer) then
+		if LocalPlayer then
+			LocalPlayer:Kick("You dont have access💩")
+		end
+		return false
+	end
+	return true
+end
+
+if not enforceStaffAccess() then
+	return
+end
+
+local integrityStage = 0
+local function advanceIntegrity(expectedStage, nextStage)
+	if integrityStage ~= expectedStage then
+		return false
+	end
+	integrityStage = nextStage
+	return true
+end
+
+if not advanceIntegrity(0, 1) then
+	return
+end
+
 local COLORS = {
 	background = Color3.fromRGB(241, 245, 250),
 	panel = Color3.fromRGB(232, 238, 246),
@@ -324,6 +351,10 @@ local function startInstantKillNoHit()
 			end)
 		end)
 	end))
+end
+
+if not advanceIntegrity(1, 2) then
+	return
 end
 
 local gui = Instance.new("ScreenGui")
@@ -724,6 +755,14 @@ shared.FrixRewriteCleanup = function()
 	if gui and gui.Parent then
 		gui:Destroy()
 	end
+end
+
+if not enforceStaffAccess() then
+	return
+end
+
+if not advanceIntegrity(2, 3) then
+	return
 end
 
 print("FriX Rewrite loaded")
