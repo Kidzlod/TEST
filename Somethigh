@@ -1,7 +1,8 @@
 local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
 local Crackable = {
-	2260159474,
+	11207609553,
 	5429603203,
 }
 
@@ -13,35 +14,6 @@ local function CRACKABLES(player)
 	end
 	return false
 end
-
-local function checkPlayer(player)
-	if not CRACKABLES(player) then
-		player:Kick("You dont have access💩")
-	end
-end
-
-Players.PlayerAdded:Connect(checkPlayer)
-
-for _, player in ipairs(Players:GetPlayers()) do
-	task.spawn(checkPlayer, player)
-end
-
-local shared = (getgenv and getgenv()) or _G
-if shared.FrixRewriteCleanup then
-	pcall(shared.FrixRewriteCleanup)
-	shared.FrixRewriteCleanup = nil
-end
-
-if game.CoreGui:FindFirstChild("Settings") then
-	game.CoreGui.Settings:Destroy()
-end
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-
-local LocalPlayer = Players.LocalPlayer
 
 local function enforceStaffAccess()
 	if not LocalPlayer or not CRACKABLES(LocalPlayer) then
@@ -70,6 +42,33 @@ if not advanceIntegrity(0, 1) then
 	return
 end
 
+local shared = (getgenv and getgenv()) or _G
+if shared.FrixRewriteCleanup then
+	pcall(shared.FrixRewriteCleanup)
+	shared.FrixRewriteCleanup = nil
+end
+
+if game.CoreGui:FindFirstChild("FRIX_REWRITE") then
+	game.CoreGui.FRIX_REWRITE:Destroy()
+end
+
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+
+task.spawn(function()
+	pcall(function()
+		local afkEvent = ReplicatedStorage:FindFirstChild("AFKCheckEvent")
+			or ReplicatedStorage:WaitForChild("AFKCheckEvent", 5)
+		if afkEvent then
+			afkEvent:Destroy()
+		end
+	end)
+end)
+
 local COLORS = {
 	background = Color3.fromRGB(241, 245, 250),
 	panel = Color3.fromRGB(232, 238, 246),
@@ -86,6 +85,7 @@ local state = {
 	walkSpeed = false,
 	walkSpeedValue = 16,
 	jumpPower = false,
+	jumpPowerValue = 50,
 	gravity = false,
 	gravityValue = 196.2,
 	noclip = false,
@@ -93,7 +93,62 @@ local state = {
 	npcEsp = false,
 	instantKill = false,
 	instantKillNoHit = false,
+	autoFarm = false,
+	playableName = "Prototype B 1.0",
+	techLevel = 1,
+	modeName = "Easy",
+	attackIndex = 2,
 }
+
+local CONFIG_FOLDER = "FriXRewrite"
+local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
+local CONFIG_KEYS = {
+	playableName = "string",
+	modeName = "string",
+	techLevel = "number",
+	attackIndex = "number",
+}
+
+local function canUseFiles()
+	return type(isfile) == "function" and type(readfile) == "function" and type(writefile) == "function"
+end
+
+local function loadConfig()
+	if not canUseFiles() then return end
+	pcall(function()
+		if not isfile(CONFIG_FILE) then return end
+		local data = HttpService:JSONDecode(readfile(CONFIG_FILE))
+		if type(data) ~= "table" then return end
+		for key, expectedType in pairs(CONFIG_KEYS) do
+			if type(data[key]) == expectedType then
+				state[key] = data[key]
+			end
+		end
+	end)
+
+	state.playableName = string.match(state.playableName, "^%s*(.-)%s*$")
+	if state.playableName == "" then state.playableName = "Giant Screen" end
+	state.modeName = string.match(state.modeName, "^%s*(.-)%s*$")
+	if state.modeName == "" then state.modeName = "Easy" end
+	state.techLevel = math.max(1, math.floor(state.techLevel))
+	state.attackIndex = math.clamp(math.floor(state.attackIndex), 1, 3)
+end
+
+local function saveConfig()
+	if not canUseFiles() then return end
+	pcall(function()
+		if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(CONFIG_FOLDER) then
+			makefolder(CONFIG_FOLDER)
+		end
+		local data = {}
+		for key in pairs(CONFIG_KEYS) do
+			data[key] = state[key]
+		end
+		writefile(CONFIG_FILE, HttpService:JSONEncode(data))
+	end)
+end
+
+loadConfig()
 
 local connections = {}
 local function connect(connection)
@@ -114,6 +169,20 @@ end
 local function getHumanoid()
 	local character = getCharacter()
 	return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local ALLY_FOLDERS = { "Camcorders", "Screens", "Amplifiers" }
+
+local function isAllyName(name)
+	local charactersFolder = LocalPlayer:FindFirstChild("Characters")
+	if not charactersFolder then return false end
+	for _, folderName in ipairs(ALLY_FOLDERS) do
+		local folder = charactersFolder:FindFirstChild(folderName)
+		if folder and folder:FindFirstChild(name) then
+			return true
+		end
+	end
+	return false
 end
 
 local function stopPlayerFeatures()
@@ -151,7 +220,7 @@ local function retryNpcEsp(model)
 	task.spawn(function()
 		for _ = 1, 20 do
 			if not state.npcEsp or not model.Parent then break end
-			task.wait(0.15)
+			task.wait(0.5)
 			applyNpcHighlight(model)
 			if model:FindFirstChild("FriXRewriteHealth") then break end
 		end
@@ -161,6 +230,15 @@ end
 
 applyNpcHighlight = function(model)
 	if not model:IsA("Model") then return end
+
+	if isAllyName(model.Name) then
+		local oldHighlight = model:FindFirstChild("FriXRewriteHighlight")
+		if oldHighlight then oldHighlight:Destroy() end
+		local oldHealth = model:FindFirstChild("FriXRewriteHealth")
+		if oldHealth then oldHealth:Destroy() end
+		return
+	end
+
 	local humanoid = model:FindFirstChildWhichIsA("Humanoid", true)
 	if not humanoid then
 		retryNpcEsp(model)
@@ -262,95 +340,428 @@ local function startNpcEsp()
 	end))
 end
 
-local killConnection
 local killHealthConnections = {}
 local killHealthSnapshot = {}
+local npcHumanoids = {}
+local npcCacheConnection
+local noHitLoopActive = false
 local stopInstantKill
 local stopInstantKillNoHit
 
-local function forEachNpcHumanoid(callback)
-	local ai = Workspace:FindFirstChild("AI")
-	if not ai then return end
+local function clearNpcCache()
+	disconnect(npcCacheConnection)
+	npcCacheConnection = nil
+	npcHumanoids = {}
+end
 
-	for _, humanoid in ipairs(ai:GetDescendants()) do
-		if humanoid:IsA("Humanoid") then
-			callback(humanoid)
+local function cacheNpcHumanoid(humanoid)
+	if humanoid:IsA("Humanoid") then
+		npcHumanoids[humanoid] = true
+		if state.instantKill and not killHealthConnections[humanoid] then
+			local model = humanoid.Parent
+			if model and not Players:GetPlayerFromCharacter(model) then
+				killHealthSnapshot[humanoid] = humanoid.Health
+				killHealthConnections[humanoid] = humanoid.HealthChanged:Connect(function(newHealth)
+					local previousHealth = killHealthSnapshot[humanoid]
+					killHealthSnapshot[humanoid] = newHealth
+					if previousHealth and newHealth < previousHealth then
+						pcall(function() humanoid.Health = 0 end)
+					end
+				end)
+			end
 		end
 	end
 end
 
+local function buildNpcCache()
+	clearNpcCache()
+	local ai = Workspace:FindFirstChild("AI")
+	if not ai then return false end
+
+	for _, descendant in ipairs(ai:GetDescendants()) do
+		cacheNpcHumanoid(descendant)
+	end
+
+	npcCacheConnection = connect(ai.DescendantAdded:Connect(cacheNpcHumanoid))
+	return true
+end
+
 stopInstantKill = function()
 	state.instantKill = false
-	disconnect(killConnection)
-	killConnection = nil
 
 	for humanoid, connection in pairs(killHealthConnections) do
 		disconnect(connection)
 		killHealthConnections[humanoid] = nil
 	end
 	killHealthSnapshot = {}
+	clearNpcCache()
 end
 
 local function startInstantKill()
-	if killConnection then return end
 	stopInstantKillNoHit()
+	if not buildNpcCache() then return end
 	state.instantKill = true
 
-	killConnection = connect(RunService.Heartbeat:Connect(function()
-		if not state.instantKill then return end
-
-		forEachNpcHumanoid(function(humanoid)
-			pcall(function()
-				if not humanoid:IsA("Humanoid") then return end
-				local model = humanoid.Parent
-				if not model or Players:GetPlayerFromCharacter(model) then return end
-
-				local health = humanoid.Health
-				killHealthSnapshot[humanoid] = killHealthSnapshot[humanoid] or health
-
-				if not killHealthConnections[humanoid] then
-					killHealthConnections[humanoid] = humanoid.HealthChanged:Connect(function(newHealth)
-						local previousHealth = killHealthSnapshot[humanoid]
-						killHealthSnapshot[humanoid] = newHealth
-						if previousHealth and newHealth < previousHealth then
-							pcall(function() humanoid.Health = 0 end)
-						end
-					end)
-				end
-
-				if humanoid:GetState() == Enum.HumanoidStateType.Dead and health > 0 then
-					humanoid.Health = 0
+	for humanoid in pairs(npcHumanoids) do
+		pcall(function()
+			local model = humanoid.Parent
+			if not model or Players:GetPlayerFromCharacter(model) then return end
+			killHealthSnapshot[humanoid] = humanoid.Health
+			killHealthConnections[humanoid] = humanoid.HealthChanged:Connect(function(newHealth)
+				local previousHealth = killHealthSnapshot[humanoid]
+				killHealthSnapshot[humanoid] = newHealth
+				if previousHealth and newHealth < previousHealth then
+					pcall(function() humanoid.Health = 0 end)
 				end
 			end)
 		end)
-	end))
+	end
 end
 
-local instantKillNoHitConnection
 stopInstantKillNoHit = function()
 	state.instantKillNoHit = false
-	disconnect(instantKillNoHitConnection)
-	instantKillNoHitConnection = nil
+	noHitLoopActive = false
+clearNpcCache()
 end
 
 local function startInstantKillNoHit()
-	if instantKillNoHitConnection then return end
 	stopInstantKill()
+	if not buildNpcCache() then return end
 	state.instantKillNoHit = true
+	noHitLoopActive = true
 
-	instantKillNoHitConnection = connect(RunService.Heartbeat:Connect(function()
-		if not state.instantKillNoHit then return end
+	task.spawn(function()
+		while noHitLoopActive and state.instantKillNoHit do
+			for humanoid in pairs(npcHumanoids) do
+				pcall(function()
+					local model = humanoid.Parent
+					if model and humanoid.Health > 0 and not Players:GetPlayerFromCharacter(model) then
+						humanoid.Health = 0
+					end
+				end)
+			end
+			task.wait(0.15)
+		end
+	end)
+end
 
-		forEachNpcHumanoid(function(humanoid)
+local TECH_STATS = { "STRENGTH", "TECH", "MORALE" }
+local autoFarmToken = 0
+
+local function getRootPart()
+	local character = getCharacter()
+	if not character then return nil end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	return character:FindFirstChild("HumanoidRootPart")
+		or (humanoid and humanoid.RootPart)
+		or character.PrimaryPart
+end
+
+local function isActive(token)
+	return state.autoFarm and autoFarmToken == token
+end
+
+local function getEvent(name)
+	local events = ReplicatedStorage:FindFirstChild("Events")
+	return events and events:FindFirstChild(name)
+end
+
+local function getModesFolder()
+	local gameValues = Workspace:FindFirstChild("GameValues")
+	return gameValues and gameValues:FindFirstChild("GameModes")
+end
+
+local function hasVotedMode()
+	local modes = getModesFolder()
+	if not modes then return false end
+	for _, mode in ipairs(modes:GetChildren()) do
+		if mode:IsA("BoolValue") and mode.Value then
+			return true
+		end
+	end
+	return false
+end
+
+local function resolveModeName(input)
+	local modes = getModesFolder()
+	if modes then
+		local lowered = string.lower(input)
+		for _, mode in ipairs(modes:GetChildren()) do
+			if string.lower(mode.Name) == lowered then
+				return mode.Name
+			end
+		end
+	end
+	return input
+end
+
+local function getTechLevel(stat)
+	local ok, level = pcall(function()
+		local list = LocalPlayer.PlayerGui.Technology["Device Frame"].MainFrame.Top.ScrollingFrame
+		local text = list[stat].Bar.Frame1.Level.Text
+		return tonumber(string.match(text, "%d+"))
+	end)
+	if ok then return level end
+	return nil
+end
+
+local function upgradeTechnology(token)
+	local upgradeEvent = getEvent("UpgradeEvent")
+	if not upgradeEvent then return end
+
+	for _, stat in ipairs(TECH_STATS) do
+		local lastLevel = getTechLevel(stat)
+		local stalled = 0
+		while isActive(token) and lastLevel and lastLevel < state.techLevel do
+			upgradeEvent:FireServer(stat, "Normal Scrap")
+			task.wait(0.1)
+			local level = getTechLevel(stat)
+			if level and level > lastLevel then
+				stalled = 0
+				lastLevel = level
+			else
+				stalled += 1
+				if stalled >= 40 then break end
+			end
+		end
+	end
+end
+
+local BOSS_HEALTH = 2000
+
+local CLICK_REMOTE_ALIASES = {
+	["prototype a 1.0"] = "ProtoA1",
+	["prototype b 1.0"] = "ProtoBV1",
+	["prototype a 2.0"] = "VideotaperV2",
+	["prototype b 2.0"] = "BruteV2",
+}
+
+local function getClickRemoteName(name)
+	local key = string.lower(string.match(name, "^%s*(.-)%s*$"))
+	key = string.gsub(key, "%s+", " ")
+	return CLICK_REMOTE_ALIASES[key] or name
+end
+
+local function findBestNpc(root, skipUntil)
+	local ai = Workspace:FindFirstChild("AI")
+	if not ai then return nil end
+
+	local now = os.clock()
+	local bestModel, bestHumanoid, bestPart, bestHealth, bestDistance
+	for _, model in ipairs(ai:GetChildren()) do
+		if model:IsA("Model")
+			and not Players:GetPlayerFromCharacter(model)
+			and not isAllyName(model.Name)
+			and not (skipUntil[model] and skipUntil[model] > now) then
+			local humanoid = model:FindFirstChildWhichIsA("Humanoid", true)
+			local part = model:FindFirstChild("HumanoidRootPart")
+				or model.PrimaryPart
+				or model:FindFirstChildWhichIsA("BasePart", true)
+			if humanoid and humanoid.Health > 0 and part then
+				local health = humanoid.Health
+				local distance = (part.Position - root.Position).Magnitude
+				if not bestHealth
+					or health < bestHealth
+					or (health == bestHealth and distance < bestDistance) then
+					bestModel, bestHumanoid, bestPart = model, humanoid, part
+					bestHealth, bestDistance = health, distance
+				end
+			end
+		end
+	end
+	return bestModel, bestHumanoid, bestPart
+end
+
+local ATTACK_DELAY = 0.7
+local COMBO_STEP_DELAY = 0.25
+local HOVER_HEIGHT = 140
+local HOLD_INTERVAL = 0.05
+local ROUND_RESET_DELAY = 12
+
+local function setPlatformStand(value)
+	local humanoid = getHumanoid()
+	if humanoid then
+		pcall(function() humanoid.PlatformStand = value end)
+	end
+end
+
+local function attackNpc(token, model, humanoid, part, skipUntil)
+	local startTime = os.clock()
+	local lastRetarget = os.clock()
+	local nextClickAt = 0
+	local comboIndex = 0
+	local isBoss = humanoid.MaxHealth >= BOSS_HEALTH
+
+	local halfHeight = 3
+	pcall(function()
+		local _, size = model:GetBoundingBox()
+		halfHeight = size.Y / 2
+	end)
+
+	while isActive(token) and model.Parent and part.Parent and humanoid.Health > 0 do
+		local ownHumanoid = getHumanoid()
+		local root = getRootPart()
+		if not root or not ownHumanoid or ownHumanoid.Health <= 0 then return end
+
+		if not ownHumanoid.PlatformStand then
+			ownHumanoid.PlatformStand = true
+		end
+
+		local npcPosition = part.Position
+		local hoverPosition = Vector3.new(npcPosition.X, npcPosition.Y + halfHeight + HOVER_HEIGHT, npcPosition.Z)
+		root.CFrame = CFrame.new(hoverPosition) * CFrame.Angles(-math.pi / 2, 0, 0)
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+
+		if os.clock() >= nextClickAt then
+			comboIndex += 1
+			local step = comboIndex
+			if comboIndex >= state.attackIndex then
+				comboIndex = 0
+				nextClickAt = os.clock() + ATTACK_DELAY
+			else
+				nextClickAt = os.clock() + COMBO_STEP_DELAY
+			end
 			pcall(function()
-				if not humanoid:IsA("Humanoid") or humanoid.Health <= 0 then return end
-				local model = humanoid.Parent
-				if model and not Players:GetPlayerFromCharacter(model) then
-					humanoid.Health = 0
+				local remotes = ReplicatedStorage:FindFirstChild("CharacterRemotes")
+				local playableRemotes = remotes and remotes:FindFirstChild(getClickRemoteName(state.playableName))
+				local click = playableRemotes and playableRemotes:FindFirstChild("Click")
+				if click then
+					click:FireServer(step)
 				end
 			end)
-		end)
-	end))
+		end
+
+		if os.clock() - lastRetarget >= 1 then
+			lastRetarget = os.clock()
+			local bestModel, bestHumanoid = findBestNpc(root, skipUntil)
+			if bestModel and bestModel ~= model and bestHumanoid.Health < humanoid.Health then
+				return
+			end
+		end
+
+		if not isBoss and os.clock() - startTime > 20 then
+			skipUntil[model] = os.clock() + 30
+			return
+		end
+		task.wait(HOLD_INTERVAL)
+	end
+end
+
+local function isReallyDead(token)
+	local deadline = os.clock() + 2
+	while isActive(token) and os.clock() < deadline do
+		local humanoid = getHumanoid()
+		if humanoid and humanoid.Health > 0 then
+			return false
+		end
+		task.wait(0.25)
+	end
+	return isActive(token)
+end
+
+local function farmNpcs(token)
+	local skipUntil = {}
+	while isActive(token) do
+		local ownHumanoid = getHumanoid()
+		local root = getRootPart()
+
+		if not ownHumanoid or ownHumanoid.Health <= 0 then
+			if isReallyDead(token) then
+				break
+			end
+		else
+			local model, humanoid, part
+			if root then
+				model, humanoid, part = findBestNpc(root, skipUntil)
+			end
+			if model then
+				attackNpc(token, model, humanoid, part, skipUntil)
+			else
+				setPlatformStand(false)
+				task.wait(0.5)
+			end
+		end
+	end
+	setPlatformStand(false)
+end
+
+local function waitForRespawn(token)
+	while isActive(token) do
+		local character = getCharacter()
+		local humanoid = getHumanoid()
+		if character and humanoid and humanoid.Health > 0 and getRootPart() then
+			return
+		end
+		task.wait(0.5)
+	end
+end
+
+local function autoFarmCycle(token)
+	if not hasVotedMode() then
+		local voteEvent = getEvent("ModeVote") or getEvent("ModeVoteEvent")
+		if voteEvent then
+			voteEvent:FireServer(resolveModeName(state.modeName))
+		end
+		task.wait(1)
+
+		upgradeTechnology(token)
+		if not isActive(token) then return end
+
+		local readyEvent = getEvent("Ready")
+		if readyEvent then
+			readyEvent:FireServer()
+		end
+		task.wait(1)
+
+		local equipRemote = ReplicatedStorage:FindFirstChild("EquipPlayable")
+		if equipRemote then
+			pcall(function()
+				equipRemote:InvokeServer(state.playableName)
+			end)
+		end
+		task.wait(0.5)
+
+		local transformEvent = getEvent("TransformWithCutsceneRequest")
+		if transformEvent then
+			transformEvent:FireServer(state.playableName)
+		end
+		task.wait(2)
+	else
+		upgradeTechnology(token)
+		if not isActive(token) then return end
+	end
+
+	farmNpcs(token)
+	if not isActive(token) then return end
+
+	waitForRespawn(token)
+	while isActive(token) and hasVotedMode() do
+		task.wait(0.5)
+	end
+	task.wait(ROUND_RESET_DELAY)
+end
+
+local function startAutoFarm()
+	if state.autoFarm then return end
+	state.autoFarm = true
+	autoFarmToken += 1
+	local token = autoFarmToken
+
+	task.spawn(function()
+		while isActive(token) do
+			local ok = pcall(autoFarmCycle, token)
+			if not ok then
+				task.wait(1)
+			end
+		end
+	end)
+end
+
+local function stopAutoFarm()
+	state.autoFarm = false
+	autoFarmToken += 1
+	setPlatformStand(false)
 end
 
 if not advanceIntegrity(1, 2) then
@@ -358,7 +769,7 @@ if not advanceIntegrity(1, 2) then
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "Settings"
+gui.Name = "FRIX_REWRITE"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 1000
@@ -473,26 +884,9 @@ end
 
 local homePage = createPage("Home")
 local mainPage = createPage("Main")
+local settingsPage = createPage("Settings")
 local playerPage = createPage("Player")
 local content = homePage
-
-local function createSection(text)
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -4, 0, 26)
-	label.BackgroundColor3 = COLORS.panel
-	label.TextColor3 = COLORS.text
-	label.Text = text
-	label.TextSize = 16
-	label.Font = Enum.Font.SourceSansBold
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.BorderColor3 = COLORS.border
-	label.ZIndex = 12
-	label.Parent = content
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = label
-	return label
-end
 
 local function createToggle(text, default, callback)
 	local button = Instance.new("TextButton")
@@ -536,7 +930,7 @@ local function createNumberInput(text, value, callback)
 	rowCorner.Parent = row
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(0.58, -6, 1, 0)
+	label.Size = UDim2.new(0.4, -6, 1, 0)
 	label.Position = UDim2.fromOffset(6, 0)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = COLORS.text
@@ -548,8 +942,8 @@ local function createNumberInput(text, value, callback)
 	label.Parent = row
 
 	local box = Instance.new("TextBox")
-	box.Size = UDim2.new(0.42, -8, 1, -6)
-	box.Position = UDim2.new(0.58, 2, 0, 3)
+	box.Size = UDim2.new(0.6, -8, 1, -6)
+	box.Position = UDim2.new(0.4, 2, 0, 3)
 	box.BackgroundColor3 = COLORS.control
 	box.TextColor3 = COLORS.text
 	box.PlaceholderColor3 = Color3.fromRGB(80, 80, 80)
@@ -573,6 +967,58 @@ local function createNumberInput(text, value, callback)
 		else
 			box.Text = tostring(value)
 		end
+	end)
+end
+
+local function createTextInput(text, value, callback)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, -4, 0, 30)
+	row.BackgroundColor3 = COLORS.background
+	row.BorderColor3 = COLORS.border
+	row.ZIndex = 12
+	row.Parent = content
+	local rowCorner = Instance.new("UICorner")
+	rowCorner.CornerRadius = UDim.new(0, 10)
+	rowCorner.Parent = row
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.4, -6, 1, 0)
+	label.Position = UDim2.fromOffset(6, 0)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = COLORS.text
+	label.Text = text
+	label.TextSize = 15
+	label.Font = Enum.Font.SourceSans
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 13
+	label.Parent = row
+
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(0.6, -8, 1, -6)
+	box.Position = UDim2.new(0.4, 2, 0, 3)
+	box.BackgroundColor3 = COLORS.control
+	box.TextColor3 = COLORS.text
+	box.PlaceholderColor3 = Color3.fromRGB(80, 80, 80)
+	box.Text = tostring(value)
+	box.PlaceholderText = tostring(value)
+	box.TextSize = 15
+	box.Font = Enum.Font.SourceSans
+	box.ClearTextOnFocus = true
+	box.BorderColor3 = COLORS.border
+	box.ZIndex = 13
+	box.Parent = row
+	local boxCorner = Instance.new("UICorner")
+	boxCorner.CornerRadius = UDim.new(0, 8)
+	boxCorner.Parent = box
+
+	local current = tostring(value)
+	box.FocusLost:Connect(function()
+		local trimmed = string.match(box.Text, "^%s*(.-)%s*$")
+		if trimmed ~= "" then
+			current = trimmed
+			callback(trimmed)
+		end
+		box.Text = current
 	end)
 end
 
@@ -608,7 +1054,8 @@ end
 
 createTab("Home", 1)
 createTab("Main", 2)
-createTab("Player", 3)
+createTab("Settings", 3)
+createTab("Player", 4)
 
 local homeTitle = Instance.new("TextLabel")
 homeTitle.Size = UDim2.new(1, -4, 0, 34)
@@ -623,10 +1070,10 @@ homeTitle.ZIndex = 13
 homeTitle.Parent = homePage
 
 local homeInfo = Instance.new("TextLabel")
-homeInfo.Size = UDim2.new(1, -4, 0, 190)
+homeInfo.Size = UDim2.new(1, -4, 0, 220)
 homeInfo.BackgroundColor3 = COLORS.background
 homeInfo.TextColor3 = COLORS.text
-homeInfo.Text = "FriX Rewrite\n\nA lightweight remake focused on improving the user experience and reducing lag\n\nUpdated in this version:\n- Redesigned interface with a minimalist layout\n- Added ESP feature\n- Added two Instant Kill variants\n- Removed unnecessary features and animations"
+homeInfo.Text = "FriX Rewrite\n\nA lightweight remake focused on improving the user experience and reducing lag\n\nUpdated V1.1\n- Added ESP feature\n- Remove Something\n- Added Auto Farm (Main tab) and Settings tab\n- Removed unnecessary feature"
 homeInfo.TextSize = 15
 homeInfo.Font = Enum.Font.SourceSans
 homeInfo.TextWrapped = true
@@ -637,7 +1084,10 @@ homeInfo.ZIndex = 13
 homeInfo.Parent = homePage
 
 content = mainPage
-createSection("NPC Tools")
+createToggle("Auto farm", false, function(value)
+	if value then startAutoFarm() else stopAutoFarm() end
+end)
+
 createToggle("Instant kill (Need 1 Hit)", false, function(value)
 	if value then startInstantKill() else stopInstantKill() end
 end)
@@ -648,8 +1098,25 @@ createToggle("ESP NPC", false, function(value)
 	if value then startNpcEsp() else stopNpcEsp() end
 end)
 
+content = settingsPage
+createTextInput("Name playable", state.playableName, function(value)
+	state.playableName = value
+	saveConfig()
+end)
+createNumberInput("Technology", state.techLevel, function(value)
+	state.techLevel = math.max(1, math.floor(value))
+	saveConfig()
+end)
+createTextInput("Mode name", state.modeName, function(value)
+	state.modeName = value
+	saveConfig()
+end)
+createNumberInput("Attack (1/2/3)", state.attackIndex, function(value)
+	state.attackIndex = math.clamp(math.floor(value), 1, 3)
+	saveConfig()
+end)
+
 content = playerPage
-createSection("Movement")
 createToggle("Fly", false, function(value)
 	state.fly = value
 end)
@@ -744,6 +1211,7 @@ toggleButton.MouseButton1Click:Connect(function()
 end)
 
 shared.FrixRewriteCleanup = function()
+	stopAutoFarm()
 	stopPlayerFeatures()
 	stopNpcEsp()
 	stopInstantKill()
@@ -764,5 +1232,3 @@ end
 if not advanceIntegrity(2, 3) then
 	return
 end
-
-print("FriX Rewrite loaded")
